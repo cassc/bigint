@@ -553,6 +553,7 @@ __host__ __device__ bigint* bigint_from_word(bigint *dst, bigint_word a){
 __host__ __device__ bigint* bigint_from_bytes(bigint *dst, const uint8_t *src, size_t len) {
     size_t modulus = len % sizeof(bigint_word);
     size_t bigint_word_len = len / sizeof(bigint_word);
+    /*
     printf("modulus: %lu\n", modulus);
     printf("bigint_word_len: %lu\n", bigint_word_len);
     printf("src: ");
@@ -560,8 +561,9 @@ __host__ __device__ bigint* bigint_from_bytes(bigint *dst, const uint8_t *src, s
         printf("%02x", src[i]);
     }
     printf("\n");
+    */
     if (modulus) bigint_word_len++;
-    printf("bigint_word_len: %lu\n", bigint_word_len);
+    //printf("bigint_word_len: %lu\n", bigint_word_len);
     bigint_reserve(dst, bigint_word_len);
 
     bigint_raw_zero(dst->words, 0, bigint_word_len);
@@ -570,12 +572,12 @@ __host__ __device__ bigint* bigint_from_bytes(bigint *dst, const uint8_t *src, s
         for (size_t i = 0; i < modulus; i++) {
             word |= (bigint_word)src[modulus - 1 - i] << (i * 8);
         }
-        printf("word: %u\n", word);
+        //printf("word: %u\n", word);
         dst->words[bigint_word_len-1] = word;
         bigint_word_len--;
     }
-    printf("bigint_word_len: %lu\n", bigint_word_len);
-    printf("len: %lu\n", len);
+    //printf("bigint_word_len: %lu\n", bigint_word_len);
+    //printf("len: %lu\n", len);
 
     for (size_t i = 0; i < bigint_word_len; i++) {
         bigint_word word = 0;
@@ -583,13 +585,13 @@ __host__ __device__ bigint* bigint_from_bytes(bigint *dst, const uint8_t *src, s
             word |= (bigint_word)src[(len - 1) - (i*sizeof(bigint_word)+j)] << (j * 8);
         }
         dst->words[i] = word;
-        printf("word: %u\n", word);
+        //printf("word: %u\n", word);
     }
-    printf("\n");
+    //printf("\n");
     dst->neg = 0;
     if (modulus) bigint_word_len++;
     dst->size = bigint_raw_truncate(dst->words, bigint_word_len);
-    printf("dst->size: %d\n", dst->size);
+    //printf("dst->size: %d\n", dst->size);
     return dst;
 }
 
