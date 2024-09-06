@@ -1,19 +1,18 @@
-#include "bigint.h"
-
 #include <assert.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+#include <CuBigInt/bigint.cuh>
 
 #define BIGINT_ASSERT(a, op, b) assert((a) op (b));
 
 /* low bits of a * b */
-bigint_word bigint_word_mul_lo(bigint_word a, bigint_word b){
+__host__ __device__ bigint_word bigint_word_mul_lo(bigint_word a, bigint_word b){
     return a * b;
 }
 
 /* high bits of a * b */
-bigint_word bigint_word_mul_hi(bigint_word a, bigint_word b){
+__host__ __device__ bigint_word bigint_word_mul_hi(bigint_word a, bigint_word b){
     bigint_word c0 = BIGINT_WORD_LO(a) * BIGINT_WORD_LO(b);
     bigint_word c1 = BIGINT_WORD_LO(a) * BIGINT_WORD_HI(b);
     bigint_word c2 = BIGINT_WORD_HI(a) * BIGINT_WORD_LO(b);
@@ -24,7 +23,7 @@ bigint_word bigint_word_mul_hi(bigint_word a, bigint_word b){
 }
 
 /* dst = a + b, return carry */
-bigint_word bigint_word_add_get_carry(
+__host__ __device__ bigint_word bigint_word_add_get_carry(
     bigint_word *dst,
     bigint_word a,
     bigint_word b
@@ -35,7 +34,7 @@ bigint_word bigint_word_add_get_carry(
 }
 
 /* dst = a - b, return carry */
-bigint_word bigint_word_sub_get_carry(
+__host__ __device__ bigint_word bigint_word_sub_get_carry(
     bigint_word *dst,
     bigint_word a,
     bigint_word b
@@ -45,7 +44,7 @@ bigint_word bigint_word_sub_get_carry(
     return b > a;
 }
 
-bigint_word bigint_word_from_char(char c){
+__host__ __device__ bigint_word bigint_word_from_char(char c){
     switch (c){
         case '0': return 0;
         case '1': return 1;
@@ -87,19 +86,19 @@ bigint_word bigint_word_from_char(char c){
     }
 }
 
-int bigint_word_bitlength(bigint_word a){
+__host__ __device__ int bigint_word_bitlength(bigint_word a){
     int i;
     for (i = BIGINT_WORD_BITS - 1; i >= 0; i--) if ((a >> i) & 1) return i + 1;
     return 0;
 }
 
-int bigint_word_count_trailing_zeros(bigint_word a){
+__host__ __device__ int bigint_word_count_trailing_zeros(bigint_word a){
     int i;
     for (i = 0; i < (int)BIGINT_WORD_BITS; i++) if ((a >> i) & 1) return i;
     return BIGINT_WORD_BITS;
 }
 
-bigint_word bigint_word_gcd(bigint_word a, bigint_word b){
+__host__ __device__ bigint_word bigint_word_gcd(bigint_word a, bigint_word b){
     while (1){
         if (!a) return b;
         b %= a;
@@ -108,7 +107,7 @@ bigint_word bigint_word_gcd(bigint_word a, bigint_word b){
     }
 }
 
-unsigned bigint_uint_gcd(unsigned a, unsigned b){
+__host__ __device__ unsigned bigint_uint_gcd(unsigned a, unsigned b){
     while (1){
         if (!a) return b;
         b %= a;
@@ -117,32 +116,37 @@ unsigned bigint_uint_gcd(unsigned a, unsigned b){
     }
 }
 
-int bigint_int_gcd(int a, int b){
+__host__ __device__ int bigint_int_gcd(int a, int b){
     return bigint_uint_gcd(BIGINT_INT_ABS(a), BIGINT_INT_ABS(b));
 }
 
-bigint* bigint_init(bigint *dst){
+__host__ __device__ bigint* bigint_init(bigint *dst){
     dst->words = NULL;
     dst->neg = dst->size = dst->capacity = 0;
     return dst;
 }
 
-bigint* bigint_reserve(bigint *dst, int capacity){
+__host__ __device__ bigint* bigint_reserve(bigint *dst, int capacity){
     if (dst->capacity >= capacity) return dst;
     dst->capacity = capacity;
-    dst->words = (bigint_word*)realloc(dst->words, capacity * sizeof(*dst->words));
+    // realoc does not work on device code
+    //dst->words = (bigint_word*)realloc(dst->words, capacity * sizeof(*dst->words));
+    bigint_word *tmp = (bigint_word*)malloc(capacity * sizeof(*dst->words));
+    memcpy(tmp, dst->words, dst->size * sizeof(*dst->words));
+    free(dst->words);
+    dst->words = tmp;
     /* out of memory? sorry :( */
     assert(dst->words != NULL);
     BIGINT_ASSERT(dst->size, <=, capacity);
     return dst;
 }
 
-void bigint_free(bigint *dst){
+__host__ __device__ void bigint_free(bigint *dst){
     free(dst->words);
     bigint_init(dst);
 }
 
-int bigint_raw_cmp_abs(
+__host__ __device__ int bigint_raw_cmp_abs(
     const bigint_word *a, int na,
     const bigint_word *b, int nb
 ){
@@ -160,11 +164,11 @@ int bigint_raw_cmp_abs(
     return 0;
 }
 
-int bigint_cmp_abs(const bigint *a, const bigint *b){
+__host__ __device__ int bigint_cmp_abs(const bigint *a, const bigint *b){
     return bigint_raw_cmp_abs(a->words, a->size, b->words, b->size);
 }
 
-int bigint_raw_cmp(
+__host__ __device__ int bigint_raw_cmp(
     const bigint_word *a, int na, int a_neg,
     const bigint_word *b, int nb, int b_neg
 ){
@@ -176,11 +180,11 @@ int bigint_raw_cmp(
     return (!a_neg && b_neg) ? +1 : -1;
 }
 
-int bigint_cmp(const bigint *a, const bigint *b){
+__host__ __device__ int bigint_cmp(const bigint *a, const bigint *b){
     return bigint_raw_cmp(a->words, a->size, a->neg, b->words, b->size, b->neg);
 }
 
-int bigint_cmp_abs_word(const bigint *a, bigint_word b){
+__host__ __device__ int bigint_cmp_abs_word(const bigint *a, bigint_word b){
     if (b == 0){
         if (a->size == 0) return 0;
         return a->neg ? -1 : +1;
@@ -188,26 +192,26 @@ int bigint_cmp_abs_word(const bigint *a, bigint_word b){
     return bigint_raw_cmp_abs(a->words, a->size, &b, 1);
 }
 
-void bigint_raw_zero(bigint_word *dst, int from, int to){
+__host__ __device__ void bigint_raw_zero(bigint_word *dst, int from, int to){
     if (from >= to) return;
     memset(dst + from, 0, (to - from) * sizeof(*dst));
 }
 
-bigint* bigint_set_neg(bigint *dst, int neg){
+__host__ __device__ bigint* bigint_set_neg(bigint *dst, int neg){
     dst->neg = neg;
     return dst;
 }
 
-bigint* bigint_negate(bigint *dst){
+__host__ __device__ bigint* bigint_negate(bigint *dst){
     return bigint_set_neg(dst, !dst->neg);
 }
 
-int bigint_raw_cpy(bigint_word *dst, const bigint_word *src, int n){
+__host__ __device__ int bigint_raw_cpy(bigint_word *dst, const bigint_word *src, int n){
     memcpy(dst, src, n * sizeof(*src));
     return n;
 }
 
-bigint* bigint_cpy(bigint *dst, const bigint *src){
+__host__ __device__ bigint* bigint_cpy(bigint *dst, const bigint *src){
     if (src == dst) return dst;
     bigint_reserve(dst, src->size);
     dst->size = bigint_raw_cpy(dst->words, src->words, src->size);
@@ -215,24 +219,24 @@ bigint* bigint_cpy(bigint *dst, const bigint *src){
     return bigint_set_neg(dst, src->neg);
 }
 
-int bigint_raw_truncate(const bigint_word *a, int n){
+__host__ __device__ int bigint_raw_truncate(const bigint_word *a, int n){
     while (n > 0 && a[n - 1] == 0) n--;
     return n;
 }
 
-void bigint_raw_clr_bit(bigint_word *dst, unsigned bit_index){
+__host__ __device__ void bigint_raw_clr_bit(bigint_word *dst, unsigned bit_index){
     unsigned word_index = bit_index / BIGINT_WORD_BITS;
     bit_index %= BIGINT_WORD_BITS;
     dst[word_index] &= BIGINT_WORD_MAX ^ (((bigint_word)1) << bit_index);
 }
 
-bigint* bigint_clr_bit(bigint *dst, unsigned bit_index){
+__host__ __device__ bigint* bigint_clr_bit(bigint *dst, unsigned bit_index){
     bigint_raw_clr_bit(dst->words, bit_index);
     dst->size = bigint_raw_truncate(dst->words, dst->size);
     return dst;
 }
 
-bigint* bigint_set_bit(bigint *dst, unsigned bit_index){
+__host__ __device__ bigint* bigint_set_bit(bigint *dst, unsigned bit_index){
     int word_index = bit_index / BIGINT_WORD_BITS;
     int n = word_index + 1;
 
@@ -244,7 +248,7 @@ bigint* bigint_set_bit(bigint *dst, unsigned bit_index){
     return dst;
 }
 
-bigint_word bigint_get_bit(const bigint *src, unsigned bit_index){
+__host__ __device__ bigint_word bigint_get_bit(const bigint *src, unsigned bit_index){
     int i = bit_index / BIGINT_WORD_BITS;
 
     if (src->size <= i) return 0;
@@ -252,7 +256,7 @@ bigint_word bigint_get_bit(const bigint *src, unsigned bit_index){
     return (src->words[i] >> bit_index % BIGINT_WORD_BITS) & 1;
 }
 
-int bigint_raw_mul_word_add(
+__host__ __device__ int bigint_raw_mul_word_add(
     bigint_word *dst,
     const bigint_word *src, int n,
     bigint_word factor
@@ -275,7 +279,7 @@ int bigint_raw_mul_word_add(
     return bigint_raw_truncate(dst, i);
 }
 
-int bigint_raw_mul_word(
+__host__ __device__ int bigint_raw_mul_word(
     bigint_word *dst,
     const bigint_word *src, int n,
     bigint_word factor
@@ -298,7 +302,7 @@ int bigint_raw_mul_word(
     return bigint_raw_truncate(dst, i);
 }
 
-int bigint_raw_mul_add(
+__host__ __device__ int bigint_raw_mul_add(
     bigint_word *dst,
     const bigint_word *src_a, int na,
     const bigint_word *src_b, int nb
@@ -317,7 +321,7 @@ int bigint_raw_mul_add(
     return bigint_raw_truncate(dst, na + nb);
 }
 
-int bigint_raw_add_word(
+__host__ __device__ int bigint_raw_add_word(
     bigint_word *dst,
     const bigint_word *src, int n,
     bigint_word b
@@ -336,7 +340,7 @@ int bigint_raw_add_word(
     return bigint_raw_truncate(dst, i);
 }
 
-int bigint_raw_from_str_base(bigint_word *dst, const char *src, int base){
+__host__ __device__ int bigint_raw_from_str_base(bigint_word *dst, const char *src, int base){
     int n = 0;
 
     for (; *src; src++){
@@ -351,13 +355,13 @@ int bigint_raw_from_str_base(bigint_word *dst, const char *src, int base){
     return bigint_raw_truncate(dst, n);
 }
 
-int bigint_count_digits(const char *src){
+__host__ __device__ int bigint_count_digits(const char *src){
     int n = 0;
     for (; *src; src++) if (bigint_word_from_char(*src) != BIGINT_WORD_MAX) n++;
     return n;
 }
 
-int bigint_raw_add(
+__host__ __device__ int bigint_raw_add(
     bigint_word *dst,
     const bigint_word *src_a, int na,
     const bigint_word *src_b, int nb
@@ -384,7 +388,7 @@ int bigint_raw_add(
     return bigint_raw_truncate(dst, i);
 }
 
-int bigint_raw_sub(
+__host__ __device__ int bigint_raw_sub(
     bigint_word *dst,
     const bigint_word *src_a, int na,
     const bigint_word *src_b, int nb
@@ -408,7 +412,7 @@ int bigint_raw_sub(
     return bigint_raw_truncate(dst, i);
 }
 
-int bigint_raw_mul_karatsuba(
+__host__ __device__ int bigint_raw_mul_karatsuba(
     bigint_word *dst,
     const bigint_word *a, int na,
     const bigint_word *b, int nb,
@@ -470,7 +474,7 @@ int bigint_raw_mul_karatsuba(
     return bigint_raw_truncate(dst, n + m2*2);
 }
 
-bigint* bigint_mul(bigint *dst, const bigint *a, const bigint *b){
+__host__ __device__ bigint* bigint_mul(bigint *dst, const bigint *a, const bigint *b){
     int na = a->size;
     int nb = b->size;
     int n = na + nb;
@@ -500,18 +504,18 @@ bigint* bigint_mul(bigint *dst, const bigint *a, const bigint *b){
     return bigint_set_neg(dst, a->neg ^ b->neg);
 }
 
-int bigint_digits_bound(int n_digits_src, double src_base, double dst_base){
+__host__ __device__ int bigint_digits_bound(int n_digits_src, double src_base, double dst_base){
     /* +1 for rounding errors, just in case */
     return ceil(n_digits_src * log(src_base) / log(dst_base)) + 1;
 }
 
-int bigint_write_size(const bigint *a, double dst_base){
+__host__ __device__ int bigint_write_size(const bigint *a, double dst_base){
     double src_base = pow(2, BIGINT_WORD_BITS);
     return bigint_digits_bound(a->size, src_base, dst_base)
         + sizeof('-') + sizeof('\0');
 }
 
-bigint* bigint_from_str_base(bigint *dst, const char *src, int src_base){
+__host__ __device__ bigint* bigint_from_str_base(bigint *dst, const char *src, int src_base){
     int n_digits_src, n_digits_dst;
     double dst_base = pow(2.0, BIGINT_WORD_BITS);
 
@@ -526,11 +530,11 @@ bigint* bigint_from_str_base(bigint *dst, const char *src, int src_base){
     return bigint_set_neg(dst, *src == '-');
 }
 
-bigint* bigint_from_str(bigint *dst, const char *src){
+__host__ __device__ bigint* bigint_from_str(bigint *dst, const char *src){
     return bigint_from_str_base(dst, src, 10);
 }
 
-bigint* bigint_from_int(bigint *dst, int src){
+__host__ __device__ bigint* bigint_from_int(bigint *dst, int src){
     unsigned int x = BIGINT_INT_ABS(src);
     int n = BIGINT_MAX(1, sizeof(x)/sizeof(bigint_word));
     bigint_reserve(dst, n);
@@ -540,14 +544,59 @@ bigint* bigint_from_int(bigint *dst, int src){
     return bigint_set_neg(dst, src < 0);
 }
 
-bigint* bigint_from_word(bigint *dst, bigint_word a){
+__host__ __device__ bigint* bigint_from_word(bigint *dst, bigint_word a){
     bigint_reserve(dst, 1);
     dst->words[0] = a;
     dst->size = bigint_raw_truncate(dst->words, 1);
     return bigint_set_neg(dst, 0);
 }
 
-int bigint_raw_add_signed(
+__host__ __device__ bigint* bigint_from_bytes(bigint *dst, const uint8_t *src, size_t len) {
+    size_t modulus = len % sizeof(bigint_word);
+    size_t bigint_word_len = len / sizeof(bigint_word);
+    /*
+    printf("modulus: %lu\n", modulus);
+    printf("bigint_word_len: %lu\n", bigint_word_len);
+    printf("src: ");
+    for (size_t i = 0; i < len; i++) {
+        printf("%02x", src[i]);
+    }
+    printf("\n");
+    */
+    if (modulus) bigint_word_len++;
+    //printf("bigint_word_len: %lu\n", bigint_word_len);
+    bigint_reserve(dst, bigint_word_len);
+
+    bigint_raw_zero(dst->words, 0, bigint_word_len);
+    if (modulus) {
+        bigint_word word = 0;
+        for (size_t i = 0; i < modulus; i++) {
+            word |= (bigint_word)src[modulus - 1 - i] << (i * 8);
+        }
+        //printf("word: %u\n", word);
+        dst->words[bigint_word_len-1] = word;
+        bigint_word_len--;
+    }
+    //printf("bigint_word_len: %lu\n", bigint_word_len);
+    //printf("len: %lu\n", len);
+
+    for (size_t i = 0; i < bigint_word_len; i++) {
+        bigint_word word = 0;
+        for (size_t j = 0; j < sizeof(bigint_word); j++) {
+            word |= (bigint_word)src[(len - 1) - (i*sizeof(bigint_word)+j)] << (j * 8);
+        }
+        dst->words[i] = word;
+        //printf("word: %u\n", word);
+    }
+    //printf("\n");
+    dst->neg = 0;
+    if (modulus) bigint_word_len++;
+    dst->size = bigint_raw_truncate(dst->words, bigint_word_len);
+    //printf("dst->size: %d\n", dst->size);
+    return dst;
+}
+
+__host__ __device__ int bigint_raw_add_signed(
     bigint_word *dst, int *dst_neg,
     const bigint_word *a, int na, int a_neg,
     const bigint_word *b, int nb, int b_neg
@@ -591,7 +640,7 @@ int bigint_raw_add_signed(
     }
 }
 
-bigint* bigint_add_signed(
+__host__ __device__ bigint* bigint_add_signed(
     bigint *dst,
     const bigint *a, int a_neg,
     const bigint *b, int b_neg
@@ -611,15 +660,15 @@ bigint* bigint_add_signed(
     return dst;
 }
 
-bigint* bigint_add(bigint *dst, const bigint *a, const bigint *b){
+__host__ __device__ bigint* bigint_add(bigint *dst, const bigint *a, const bigint *b){
     return bigint_add_signed(dst, a, a->neg, b, b->neg);
 }
 
-bigint* bigint_sub(bigint *dst, const bigint *a, const bigint *b){
+__host__ __device__ bigint* bigint_sub(bigint *dst, const bigint *a, const bigint *b){
     return bigint_add_signed(dst, a, a->neg, b, !b->neg);
 }
 
-bigint* bigint_add_word_signed(
+__host__ __device__ bigint* bigint_add_word_signed(
     bigint *dst,
     const bigint *src_a,
     bigint_word b, int b_neg
@@ -637,15 +686,15 @@ bigint* bigint_add_word_signed(
     return dst;
 }
 
-bigint* bigint_add_word(bigint *dst, const bigint *src_a, bigint_word b){
+__host__ __device__ bigint* bigint_add_word(bigint *dst, const bigint *src_a, bigint_word b){
     return bigint_add_word_signed(dst, src_a, b, 0);
 }
 
-bigint* bigint_sub_word(bigint *dst, const bigint *src_a, bigint_word b){
+__host__ __device__ bigint* bigint_sub_word(bigint *dst, const bigint *src_a, bigint_word b){
     return bigint_add_word_signed(dst, src_a, b, 1);
 }
 
-int bigint_raw_shift_left(
+__host__ __device__ int bigint_raw_shift_left(
     bigint_word *dst, int n_dst,
     const bigint_word *src, int n_src,
     unsigned shift
@@ -696,7 +745,7 @@ int bigint_raw_shift_left(
     }
 }
 
-int bigint_raw_shift_right(
+__host__ __device__ int bigint_raw_shift_right(
     bigint_word *dst, int n_dst,
     const bigint_word *src, int n_src,
     int shift
@@ -733,30 +782,30 @@ int bigint_raw_shift_right(
     }
 }
 
-bigint* bigint_shift_left(bigint *dst, const bigint *src, unsigned shift){
+__host__ __device__ bigint* bigint_shift_left(bigint *dst, const bigint *src, unsigned shift){
     unsigned n = src->size + shift / BIGINT_WORD_BITS + (shift % BIGINT_WORD_BITS != 0);
     bigint_reserve(dst, n);
     dst->size = bigint_raw_shift_left(dst->words, dst->capacity, src->words, src->size, shift);
     return bigint_set_neg(dst, src->neg);
 }
 
-bigint* bigint_shift_right(bigint *dst, const bigint *src, unsigned shift){
+__host__ __device__ bigint* bigint_shift_right(bigint *dst, const bigint *src, unsigned shift){
     bigint_reserve(dst, src->size);
     dst->size = bigint_raw_shift_right(dst->words, dst->capacity, src->words, src->size, shift);
     return bigint_set_neg(dst, src->neg);
 }
 
-int bigint_raw_bitlength(const bigint_word *src_a, int na){
+__host__ __device__ int bigint_raw_bitlength(const bigint_word *src_a, int na){
     int last = na - 1;
     if (last < 0) return 0;
     return bigint_word_bitlength(src_a[last]) + last*BIGINT_WORD_BITS;
 }
 
-int bigint_bitlength(const bigint *a){
+__host__ __device__ int bigint_bitlength(const bigint *a){
     return bigint_raw_bitlength(a->words, a->size);
 }
 
-int bigint_count_trailing_zeros(const bigint *a){
+__host__ __device__ int bigint_count_trailing_zeros(const bigint *a){
     int i;
     for (i = 0; i < a->size; i++){
         bigint_word w = a->words[i];
@@ -765,7 +814,7 @@ int bigint_count_trailing_zeros(const bigint *a){
     return a->size * BIGINT_WORD_BITS;
 }
 
-bigint* bigint_div_mod(
+__host__ __device__ bigint* bigint_div_mod(
     bigint *dst_quotient,
     bigint *dst_remainder,
     const bigint *src_numerator,
@@ -831,7 +880,7 @@ bigint* bigint_div_mod(
     return dst_quotient;
 }
 
-bigint* bigint_div(
+__host__ __device__ bigint* bigint_div(
     bigint *dst,
     const bigint *numerator,
     const bigint *denominator
@@ -845,7 +894,7 @@ bigint* bigint_div(
     return dst;
 }
 
-bigint* bigint_mod(
+__host__ __device__ bigint* bigint_mod(
     bigint *dst,
     const bigint *numerator,
     const bigint *denominator
@@ -859,7 +908,7 @@ bigint* bigint_mod(
     return dst;
 }
 
-bigint* bigint_div_mod_half_word(
+__host__ __device__ bigint* bigint_div_mod_half_word(
     bigint *dst,
     bigint_word *dst_remainder,
     bigint_word denominator
@@ -897,7 +946,7 @@ bigint* bigint_div_mod_half_word(
     return dst;
 }
 
-bigint* bigint_gcd(bigint *dst, const bigint *src_a, const bigint *src_b){
+__host__ __device__ bigint* bigint_gcd(bigint *dst, const bigint *src_a, const bigint *src_b){
     int shift, shift_a, shift_b;
     bigint a[1], b[1];
 
@@ -936,7 +985,8 @@ bigint* bigint_gcd(bigint *dst, const bigint *src_a, const bigint *src_b){
     return dst;
 }
 
-bigint* bigint_sqrt(bigint *dst, const bigint *src){
+/*
+__host__ __device__ bigint* bigint_sqrt(bigint *dst, const bigint *src){
     int bit;
     bigint sum[1], tmp[1];
     const double MAX_INT_THAT_FITS_IN_DOUBLE = pow(2.0, 52.0);
@@ -957,7 +1007,6 @@ bigint* bigint_sqrt(bigint *dst, const bigint *src){
     bigint_cpy(tmp, src);
     tmp->neg = 0;
 
-    /* index of highest 1 bit rounded down */
     bit = bigint_bitlength(src);
     if (bit & 1) bit ^= 1;
 
@@ -977,8 +1026,9 @@ bigint* bigint_sqrt(bigint *dst, const bigint *src){
     bigint_free(sum);
     return dst;
 }
+*/
 
-char* bigint_write_base(
+__host__ __device__ char* bigint_write_base(
     char *dst,
     int *n_dst,
     const bigint *a,
@@ -1017,11 +1067,11 @@ char* bigint_write_base(
     return dst;
 }
 
-char* bigint_write(char *dst, int n_dst, const bigint *a){
+__host__ __device__ char* bigint_write(char *dst, int n_dst, const bigint *a){
     return bigint_write_base(dst, &n_dst, a, 10, 1);
 }
 
-bigint* bigint_rand_bits(bigint *dst, int n_bits, bigint_rand_func rand_func){
+__host__ __device__ bigint* bigint_rand_bits(bigint *dst, int n_bits, bigint_rand_func rand_func){
     int n_word_bits = n_bits % BIGINT_WORD_BITS;
     int n_words = n_bits / BIGINT_WORD_BITS + (n_word_bits != 0);
 
@@ -1037,7 +1087,7 @@ bigint* bigint_rand_bits(bigint *dst, int n_bits, bigint_rand_func rand_func){
     return dst;
 }
 
-bigint* bigint_rand_inclusive(
+__host__ __device__ bigint* bigint_rand_inclusive(
     bigint *dst,
     const bigint *n,
     bigint_rand_func rand_func
@@ -1051,7 +1101,7 @@ bigint* bigint_rand_inclusive(
     return dst;
 }
 
-bigint* bigint_rand_exclusive(
+__host__ __device__ bigint* bigint_rand_exclusive(
     bigint *dst,
     const bigint *n,
     bigint_rand_func rand_func
@@ -1065,7 +1115,7 @@ bigint* bigint_rand_exclusive(
     return dst;
 }
 
-bigint* bigint_pow_mod(
+__host__ __device__ bigint* bigint_pow_mod(
     bigint *dst,
     const bigint *src_base,
     const bigint *src_exponent,
@@ -1101,7 +1151,7 @@ bigint* bigint_pow_mod(
     return dst;
 }
 
-int bigint_is_probable_prime(
+__host__ __device__ int bigint_is_probable_prime(
     const bigint *n,
     int n_tests,
     bigint_rand_func rand_func
@@ -1156,7 +1206,7 @@ int bigint_is_probable_prime(
     return 1;
 }
 
-bigint* bigint_pow_word(bigint *dst, const bigint *base, bigint_word exponent){
+__host__ __device__ bigint* bigint_pow_word(bigint *dst, const bigint *base, bigint_word exponent){
     bigint result[1], p[1];
 
     bigint_init(p);
@@ -1179,7 +1229,7 @@ bigint* bigint_pow_word(bigint *dst, const bigint *base, bigint_word exponent){
     return dst;
 }
 
-void bigint_raw_get_high_bits(
+__host__ __device__ void bigint_raw_get_high_bits(
     bigint_word *dst, int n_dst,
     const bigint_word *src_a, int na,
     int n_bits,
@@ -1193,7 +1243,7 @@ void bigint_raw_get_high_bits(
     else           bigint_raw_shift_left (dst, n_dst, src_a, na, +shift);
 }
 
-double bigint_double(const bigint *src){
+__host__ __device__ double bigint_double(const bigint *src){
     /* assumes IEEE 754 floating point standard */
     int n, n_mant_bits = 52;
     uint64_t x = 0, exponent = 1023;
@@ -1212,4 +1262,34 @@ double bigint_double(const bigint *src){
 
     memcpy(&d, &x, sizeof(d));
     return src->neg ? -d : d;
+}
+
+__host__ __device__ uint8_t* bigint_to_bytes(uint8_t *dst, const bigint *src, size_t len) {
+    size_t modulus = len % sizeof(bigint_word);
+    size_t bigint_word_len = len / sizeof(bigint_word);
+    memset(dst, 0, len);
+    if (modulus) bigint_word_len++;
+    if (bigint_word_len > src->size) {
+        for (size_t i = 0; i < src->size; i++) {
+            bigint_word word = src->words[i];
+            for (size_t j = 0; j < sizeof(bigint_word); j++) {
+                dst[(len-1) - (i*sizeof(bigint_word)+j)] = (word >> (j * 8)) & 0xFF;
+            }
+        }
+    } else {
+        if (modulus) {
+            bigint_word word = src->words[bigint_word_len-1];
+            for (size_t i = 0; i < modulus; i++) {
+                dst[modulus-1-i] = (word >> (i * 8)) & 0xFF;
+            }
+            bigint_word_len--;
+        }
+        for (size_t i = 0; i < bigint_word_len; i++) {
+            bigint_word word = src->words[i];
+            for (size_t j = 0; j < sizeof(bigint_word); j++) {
+                dst[(len-1) - (i*sizeof(bigint_word)+j)] = (word >> (j * 8)) & 0xFF;
+            }
+        }
+    }
+    return dst;
 }
