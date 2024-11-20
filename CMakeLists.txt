@@ -25,27 +25,39 @@ add_subdirectory(CuBigInt)
 find_package(GTest REQUIRED)
 include_directories(${GTEST_INCLUDE_DIRS})
 
-file(GLOB TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cu")
+file(GLOB GPU_TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/tests/*gpu.cu" "${CMAKE_CURRENT_SOURCE_DIR}/tests/*main.cu")
+file(GLOB CPU_TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/tests/*cpu.cu" "${CMAKE_CURRENT_SOURCE_DIR}/tests/*main.cu")
 
-add_executable(${PROJECT_NAME} ${TEST_SOURCES} $<TARGET_OBJECTS:CuBigInt>)
-set_target_properties(${PROJECT_NAME}
+add_executable(${PROJECT_NAME}_cpu ${CPU_TEST_SOURCES} $<TARGET_OBJECTS:CuBigInt>)
+add_executable(${PROJECT_NAME}_gpu ${GPU_TEST_SOURCES} $<TARGET_OBJECTS:CuBigInt>)
+set_target_properties(${PROJECT_NAME}_gpu
    PROPERTIES
        CUDA_SEPARABLE_COMPILATION ON
        CUDA_RESOLVE_DEVICE_SYMBOLS ON
        POSITION_INDEPENDENT_CODE ON
 )
 
-target_link_libraries(${PROJECT_NAME} PRIVATE CuBigInt)
-# Include CuCrypto headers
-#
-# Include CuCrypto headers
-# target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/CuCrypto/include)
+set_target_properties(${PROJECT_NAME}_cpu
+   PROPERTIES
+       CUDA_SEPARABLE_COMPILATION ON
+       CUDA_RESOLVE_DEVICE_SYMBOLS ON
+       POSITION_INDEPENDENT_CODE ON
+)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE ${CUDART_LIBRARY})
-target_link_libraries(${PROJECT_NAME} PUBLIC ${GTEST_LIBRARIES} ${CUDA_LIBRARIES})
+
+target_link_libraries(${PROJECT_NAME}_cpu PRIVATE CuBigInt)
+target_link_libraries(${PROJECT_NAME}_gpu PRIVATE CuBigInt)
+#
+
+target_link_libraries(${PROJECT_NAME}_cpu PRIVATE ${CUDART_LIBRARY})
+target_link_libraries(${PROJECT_NAME}_cpu PUBLIC ${GTEST_LIBRARIES} ${CUDA_LIBRARIES})
+
+target_link_libraries(${PROJECT_NAME}_gpu PRIVATE ${CUDART_LIBRARY})
+target_link_libraries(${PROJECT_NAME}_gpu PUBLIC ${GTEST_LIBRARIES} ${CUDA_LIBRARIES})
+
 
 
 # Add the test executable to CTest
 enable_testing()
-add_test(NAME ${PROJECT_NAME} COMMAND ${PROJECT_NAME})
-
+add_test(NAME ${PROJECT_NAME}_gpu COMMAND ${PROJECT_NAME}_gpu)
+add_test(NAME ${PROJECT_NAME}_cpu COMMAND ${PROJECT_NAME}_cpu)
