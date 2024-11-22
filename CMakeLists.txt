@@ -61,3 +61,22 @@ target_link_libraries(${PROJECT_NAME}_gpu PUBLIC ${GTEST_LIBRARIES} ${CUDA_LIBRA
 enable_testing()
 add_test(NAME ${PROJECT_NAME}_gpu COMMAND ${PROJECT_NAME}_gpu)
 add_test(NAME ${PROJECT_NAME}_cpu COMMAND ${PROJECT_NAME}_cpu)
+
+
+## Benchmarking
+find_package(benchmark REQUIRED)
+file(GLOB BENCHMARK_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/*main.cu")
+message(STATUS "Benchmark sources: ${BENCHMARK_SOURCES}")
+
+add_executable(${PROJECT_NAME}_benchmark ${BENCHMARK_SOURCES} $<TARGET_OBJECTS:CuBigInt>)
+
+set_target_properties(${PROJECT_NAME}_benchmark
+   PROPERTIES
+       CUDA_SEPARABLE_COMPILATION ON
+       CUDA_RESOLVE_DEVICE_SYMBOLS ON
+       POSITION_INDEPENDENT_CODE ON
+     )
+
+target_link_libraries(${PROJECT_NAME}_benchmark PRIVATE CuBigInt)
+target_link_libraries(${PROJECT_NAME}_benchmark PRIVATE ${CUDART_LIBRARY})
+target_link_libraries(${PROJECT_NAME}_benchmark PRIVATE benchmark::benchmark)
